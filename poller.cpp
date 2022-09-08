@@ -1,6 +1,5 @@
 #include <sys/time.h>
 #include <set>
-#include <cstddef>
 #include "poller.h"
 
 using std::set;
@@ -13,8 +12,8 @@ Poller::Poller() {
 }
 
 Poller::~Poller() {
-//    for (auto cb: cbs_to) delete cb;
-//    for (auto & par: cbs) delete par.second;
+    for (auto cb: cbs_to) delete cb;
+    for (auto & par: cbs) delete par.second;
 }
 
 
@@ -24,13 +23,10 @@ void Poller::adiciona(Callback * cb) {
         // verifica se já existe um callback equivalente cadastrado
         // se existir, sobrescreve-o com o novo callback
         for (auto & c : cbs_to) {
-            if (cb == c) {
+            if (*c == *cb) {
+                c = cb;
                 return;
             }
-//            if (*c == *cb) {
-//                c = cb;
-//                return;
-//            }
         }
         // adiciona novo callback timer
         cbs_to.push_back(cb);
@@ -62,10 +58,10 @@ void Poller::limpa() {
 }
 
 void Poller::despache() {
-    while (true) despache_simples();
+    while (despache_simples());
 }
 
-void Poller::despache_simples() {
+bool Poller::despache_simples() {
     pollfd fds[MAX_FDS];
     int nfds = 0;
     
@@ -73,7 +69,7 @@ void Poller::despache_simples() {
     int min_timeout = MaxTimeout;
     Callback * cb_tout = nullptr;
     bool has_tout = false;
-    
+
     for (auto cb : cbs_to) {
         if (! cb->timeout_enabled()) continue;
 
@@ -91,7 +87,6 @@ void Poller::despache_simples() {
     // verifica tb se o timeout de algum callback desses é menor do que o
     // timer mais próximo 
     for (auto & par : cbs) {
-        int fd = par.second->filedesc();
         if (par.second->timeout_enabled()) {
             int timeout = par.second->timeout();
 
@@ -102,7 +97,8 @@ void Poller::despache_simples() {
             }
         }
         
-        if (fd >= 0) {
+        if (par.second->is_enabled()) {
+            int fd = par.second->filedesc();
             if (nfds == MAX_FDS) throw -1; // erro: excedeu qtde de descritores vigiados
             fds[nfds].fd = fd;
             fds[nfds].events = POLLIN;
@@ -114,7 +110,10 @@ void Poller::despache_simples() {
     timeval t1, t2;
     gettimeofday(&t1, NULL);
     
-    if (! has_tout) min_timeout = -1;
+    if (! has_tout) {
+        if (nfds > 0) min_timeout = -1;
+        else return false;
+    }
     int n = poll(fds, nfds, min_timeout);
     
     // lê novamente o relógio, para saber o instante em que o poll retornou
@@ -153,4 +152,6 @@ void Poller::despache_simples() {
     for (auto & par: cbs) {
       if (fired.count(par.second) == 0) par.second->update(dt);
     }
+
+    return true;
 }
