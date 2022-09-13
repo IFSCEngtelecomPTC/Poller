@@ -32,7 +32,7 @@ class Poller {
   
   // vigia os descritores cadastrados e despacha os eventos (chama os callbacks)
   // para ser lido, ou até que expire o timeout (em milissegundos)
-  bool despache_simples();
+  void despache_simples();
   void despache();
   
  protected:

@@ -1,5 +1,8 @@
 #include <sys/time.h>
 #include <set>
+#include <cstddef>
+#include <iostream>
+#include <range/v3/all.hpp>
 #include "poller.h"
 
 using std::set;
@@ -12,8 +15,8 @@ Poller::Poller() {
 }
 
 Poller::~Poller() {
-    for (auto cb: cbs_to) delete cb;
-    for (auto & par: cbs) delete par.second;
+//    for (auto cb: cbs_to) delete cb;
+//    for (auto & par: cbs) delete par.second;
 }
 
 
@@ -23,8 +26,7 @@ void Poller::adiciona(Callback * cb) {
         // verifica se já existe um callback equivalente cadastrado
         // se existir, sobrescreve-o com o novo callback
         for (auto & c : cbs_to) {
-            if (*c == *cb) {
-                c = cb;
+            if (c == cb) {
                 return;
             }
         }
@@ -58,62 +60,41 @@ void Poller::limpa() {
 }
 
 void Poller::despache() {
-    while (despache_simples());
+    while (true) despache_simples();
 }
 
-bool Poller::despache_simples() {
+void Poller::despache_simples() {
     pollfd fds[MAX_FDS];
-    int nfds = 0;
-    
+
+    // concatena callbacks normais e tiemout
+    // filtra os que estão com timeout desativado
+    // e então obtém aquele com menor timeout
+    auto v_cbs = cbs | ranges::views::transform([](auto const & par){return par.second;});
+    auto v_to = ranges::views::concat(v_cbs, cbs_to)
+             | ranges::views::filter([](auto const & cb) { return cb->timeout_enabled();});
+    auto i_cb = ranges::min_element(v_to, [](const auto & c1, const auto & c2) {return c1->timeout() < c2->timeout();});
+
+    // i_cb é um iterador !
+    Callback * cb_tout = (i_cb != end(v_to))?*i_cb:nullptr;
     // identifica o menor timeout dentre todos os timers
-    int min_timeout = MaxTimeout;
-    Callback * cb_tout = nullptr;
-    bool has_tout = false;
+    int min_timeout = cb_tout != nullptr?cb_tout->timeout():-1;
+    auto p_fds = fds;
 
-    for (auto cb : cbs_to) {
-        if (! cb->timeout_enabled()) continue;
+    // preenche o vetor de fds com os fds dos callbacks ativos
+    cbs | ranges::views::transform([](auto const & par){return par.second->filedesc();})
+        | ranges::views::filter([](auto fd) { return fd >= 0;})
+        | ranges::views::for_each([&p_fds](auto fd){p_fds->fd = fd;
+                                                                       p_fds->events = POLLIN;
+                                                                       p_fds++;
+                                                                       return ranges::views::empty<int>;})
+        | ranges::to_vector; // para executar as views
 
-        has_tout = true;
-        int fd = cb->filedesc();
-        int timeout = cb->timeout();
-        
-        if (timeout < min_timeout) {
-            min_timeout = timeout;
-            cb_tout = cb;
-        }
-    }
-    
-    // gera o vetor de descritores a ser usado na chamada poll
-    // verifica tb se o timeout de algum callback desses é menor do que o
-    // timer mais próximo 
-    for (auto & par : cbs) {
-        if (par.second->timeout_enabled()) {
-            int timeout = par.second->timeout();
-
-            has_tout = true;
-            if (timeout < min_timeout) {
-                min_timeout = timeout;
-                cb_tout = par.second;
-            }
-        }
-        
-        if (par.second->is_enabled()) {
-            int fd = par.second->filedesc();
-            if (nfds == MAX_FDS) throw -1; // erro: excedeu qtde de descritores vigiados
-            fds[nfds].fd = fd;
-            fds[nfds].events = POLLIN;
-            nfds++;            
-        }
-    }
+    auto nfds = std::distance(fds, p_fds);
 
     // lê o relógio, para saber o instante em que o poll iniciou
     timeval t1, t2;
     gettimeofday(&t1, NULL);
     
-    if (! has_tout) {
-        if (nfds > 0) min_timeout = -1;
-        else return false;
-    }
     int n = poll(fds, nfds, min_timeout);
     
     // lê novamente o relógio, para saber o instante em que o poll retornou
@@ -152,6 +133,4 @@ bool Poller::despache_simples() {
     for (auto & par: cbs) {
       if (fired.count(par.second) == 0) par.second->update(dt);
     }
-
-    return true;
 }
