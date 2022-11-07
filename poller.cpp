@@ -1,5 +1,7 @@
 #include <sys/time.h>
+#include <cstdlib>
 #include <set>
+#include <algorithm>
 #include "poller.h"
 
 using std::set;
@@ -143,7 +145,8 @@ bool Poller::despache_simples() {
 	    }*/
         }
     }
-    
+
+    cleanup();
     
     for (auto & cb: cbs_to) {
       //if (cb != cb_tout) cb->update(dt);
@@ -154,4 +157,19 @@ bool Poller::despache_simples() {
     }
 
     return true;
+}
+
+void Poller::cleanup() {
+    std::list<Callback*> l_finished;
+
+    std::copy_if(cbs_to.begin(), cbs_to.end(), std::back_inserter(l_finished), [](auto & cb) { return cb->is_finished();});
+    for (auto & par: cbs) {
+        if (par.second->is_finished()) {
+            l_finished.push_back(par.second);
+        }
+    }
+
+    for (auto & cb: l_finished) {
+        remove(cb);
+    }
 }

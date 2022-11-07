@@ -38,6 +38,8 @@ class Poller {
  protected:
      list<Callback*> cbs_to;
      map<int,Callback*> cbs;
+
+     void cleanup();
 };
 
 #endif

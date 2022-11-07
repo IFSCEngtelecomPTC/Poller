@@ -12,39 +12,28 @@
  */
 
 #include "Callback.h"
-#include <unistd.h>
-#include <fcntl.h>
 
-Callback::Callback(int fd, long tout): fd(fd), base_tout(tout),tout(tout), enabled_to(true), enabled(true), reloaded(false) {
-    auto flags = fcntl(fd, F_GETFL);
-    fcntl(fd, F_SETFL, flags | O_NDELAY);
+Callback::Callback(int fd, long tout): fd(fd), base_tout(tout),tout(tout), enabled_to(true),finished(false) {
     if (tout < 0) throw -1;
+    enabled = (fd >= 0);
 }
 
-Callback::Callback(long tout) : fd(-1), base_tout(tout),tout(tout), enabled_to(true), reloaded(false) {
+Callback::Callback(long tout) : fd(-1), base_tout(tout),tout(tout), enabled_to(true),finished(false) {
     if (tout < 0) throw -1;
+    enabled = false;
 }
 
 int Callback::filedesc() const { return fd;}
-
-void Callback::set_timeout(long t_out) {
-    if (t_out < 0) throw -1;
-    reloaded = true;
-    tout = t_out;
-}
 
 int Callback::timeout() const { return tout;}
 
 void Callback::reload_timeout() {
     tout = base_tout;
-    reloaded = true;
 }
 
 void Callback::update(long dt) {
-    if (! reloaded) {
-        tout -= dt;
-        if (tout < 0) tout = 0;
-    } else reloaded = false;
+    tout -= dt;
+    if (tout < 0) tout = 0;
 }
     
 bool Callback::operator==(const Callback & o) const {
@@ -55,14 +44,24 @@ void Callback::disable_timeout() {
     enabled_to = false;
 }
 
-void Callback::enable_timeout() {
-    enabled_to = true;
+void Callback::disable() {
+    enabled = false;
 }
 
 void Callback::enable() {
     enabled = true;
 }
 
-void Callback::disable() {
-    enabled = false;
+void Callback::enable_timeout() {
+    enabled_to = true;
+}
+
+void Callback::set_timeout(long timeout) {
+    tout = timeout;
+}
+
+void Callback::finish() {
+    finished = true;
+    disable();
+    disable_timeout();
 }
