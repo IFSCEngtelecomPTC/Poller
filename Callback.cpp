@@ -14,14 +14,13 @@
 #include "Callback.h"
 #include <stdexcept>
 
-Callback::Callback(int fd, long tout): fd(fd), base_tout(tout),tout(tout), enabled_to(true),finished(false) {
+Callback::Callback(int fd, long tout): fd(fd), base_tout(tout),tout(tout), enabled_to(true),finished(false),enabled(true) {
+    if (fd < 0) throw std::invalid_argument("descriptor must be valid");
     if (tout < 0) disable_timeout();
-    enabled = (fd >= 0);
 }
 
-Callback::Callback(long tout) : fd(-1), base_tout(tout),tout(tout), enabled_to(true),finished(false) {
+Callback::Callback(long tout) : fd(-1), base_tout(tout),tout(tout), enabled_to(true),finished(false),enabled(false) {
     if (tout < 0) throw std::invalid_argument("timer callback cannot have not timeout !");
-    enabled = false;
 }
 
 int Callback::filedesc() const { return fd;}
