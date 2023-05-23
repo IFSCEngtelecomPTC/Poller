@@ -12,14 +12,15 @@
  */
 
 #include "Callback.h"
+#include <stdexcept>
 
 Callback::Callback(int fd, long tout): fd(fd), base_tout(tout),tout(tout), enabled_to(true),finished(false) {
-    if (tout < 0) throw -1;
+    if (tout < 0) disable_timeout();
     enabled = (fd >= 0);
 }
 
 Callback::Callback(long tout) : fd(-1), base_tout(tout),tout(tout), enabled_to(true),finished(false) {
-    if (tout < 0) throw -1;
+    if (tout < 0) throw std::invalid_argument("timer callback cannot have not timeout !");
     enabled = false;
 }
 

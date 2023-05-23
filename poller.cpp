@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <set>
 #include <algorithm>
+#include <stdexcept>
 #include "poller.h"
 
 using std::set;
@@ -101,7 +102,7 @@ bool Poller::despache_simples() {
         
         if (par.second->is_enabled()) {
             int fd = par.second->filedesc();
-            if (nfds == MAX_FDS) throw -1; // erro: excedeu qtde de descritores vigiados
+            if (nfds == MAX_FDS) throw std::runtime_error("descriptors exceeded"); // erro: excedeu qtde de descritores vigiados
             fds[nfds].fd = fd;
             fds[nfds].events = POLLIN;
             nfds++;            
