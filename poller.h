@@ -39,7 +39,14 @@ class Poller {
      list<Callback*> cbs_to;
      map<int,Callback*> cbs;
 
-     void cleanup();
+    void cleanup();
+
+    template <typename Iter>
+    Callback* get_min_timeout(Iter start, Iter end) const;
+
+    Callback* get_min_timeout() const;
+
+    static bool comp_cb(Callback * c1, Callback * c2);
 };
 
 #endif

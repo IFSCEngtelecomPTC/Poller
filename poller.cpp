@@ -3,6 +3,7 @@
 #include <set>
 #include <algorithm>
 #include <stdexcept>
+#include <vector>
 #include "poller.h"
 
 using std::set;
@@ -64,58 +65,55 @@ void Poller::despache() {
     while (despache_simples());
 }
 
+bool Poller::comp_cb(Callback * c1, Callback * c2) {
+    if (c1 == nullptr || ! c1->timeout_enabled()) return false;
+    if (c2 == nullptr || ! c2->timeout_enabled()) return true;
+    return c1->timeout() < c2->timeout();
+}
+
+template <typename Iter>
+Callback* Poller::get_min_timeout(Iter start, Iter end) const {
+    auto menor = std::min_element(start, end, Poller::comp_cb);
+    if (menor != end) return *menor;
+    return nullptr;
+}
+
+Callback* Poller::get_min_timeout() const {
+    auto cb_tout1 = get_min_timeout(cbs_to.begin(), cbs_to.end());
+    std::vector<Callback*> v_cb;
+    std::transform(cbs.begin(), cbs.end(), std::back_inserter(v_cb), [](auto & par) { return par.second;});
+    auto cb_tout2 = get_min_timeout(v_cb.begin(), v_cb.end());
+    return std::min(cb_tout1, cb_tout2, Poller::comp_cb);
+}
+
 bool Poller::despache_simples() {
     pollfd fds[MAX_FDS];
     int nfds = 0;
     
     // identifica o menor timeout dentre todos os timers
-    int min_timeout = MaxTimeout;
-    Callback * cb_tout = nullptr;
-    bool has_tout = false;
+    auto cb_tout = get_min_timeout();
 
-    for (auto cb : cbs_to) {
-        if (! cb->timeout_enabled()) continue;
-
-        has_tout = true;
-        int fd = cb->filedesc();
-        int timeout = cb->timeout();
-        
-        if (timeout < min_timeout) {
-            min_timeout = timeout;
-            cb_tout = cb;
-        }
-    }
-    
     // gera o vetor de descritores a ser usado na chamada poll
     // verifica tb se o timeout de algum callback desses é menor do que o
-    // timer mais próximo 
+    // timer mais próximo
     for (auto & par : cbs) {
-        if (par.second->timeout_enabled()) {
-            int timeout = par.second->timeout();
-
-            has_tout = true;
-            if (timeout < min_timeout) {
-                min_timeout = timeout;
-                cb_tout = par.second;
-            }
-        }
-        
         if (par.second->is_enabled()) {
             int fd = par.second->filedesc();
             if (nfds == MAX_FDS) throw std::runtime_error("descriptors exceeded"); // erro: excedeu qtde de descritores vigiados
-            fds[nfds].fd = fd;
-            fds[nfds].events = POLLIN;
-            nfds++;            
+            fds[nfds++] = pollfd{fd, POLLIN};
         }
     }
 
     // lê o relógio, para saber o instante em que o poll iniciou
     timeval t1, t2;
     gettimeofday(&t1, NULL);
-    
-    if (! has_tout) {
+
+    int min_timeout;
+    if (cb_tout == nullptr) {
         if (nfds > 0) min_timeout = -1;
         else return false;
+    } else {
+        min_timeout = cb_tout->timeout();
     }
     int n = poll(fds, nfds, min_timeout);
     
